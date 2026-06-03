@@ -1,37 +1,48 @@
 package matrix
 
+import (
+	"context"
+	"net/http"
+)
+
+// LoginIdentifier identifies the user logging in. See the Matrix spec's
+// "Identifier types" (e.g. "m.id.user").
+type LoginIdentifier struct {
+	Type string `json:"type"`
+	User string `json:"user,omitempty"`
+}
+
 type LoginRequest struct {
-	Password string `json:"password"`
-	Medium   string `json:"medium,omitempty"`
-	Type     string `json:"type"`
-	User     string `json:"user,omitempty"`
-	Address  string `json:"address,omitempty"`
+	Type       string          `json:"type"`
+	Identifier LoginIdentifier `json:"identifier"`
+	Password   string          `json:"password,omitempty"`
 }
 
 type LoginResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	HomeServer   string `json:"home_server"`
-	UserID       string `json:"user_id"`
+	AccessToken string `json:"access_token"`
+	DeviceID    string `json:"device_id"`
+	UserID      string `json:"user_id"`
 }
 
-func (me *MatrixClient) PasswordLogin(user string, pass string) error {
-	uri := me.endpoints.login
+// PasswordLogin authenticates with the homeserver using the m.login.password
+// flow and stores the resulting access token on the client.
+func (c *MatrixClient) PasswordLogin(ctx context.Context, user, pass string) error {
 	req := LoginRequest{
+		Type: "m.login.password",
+		Identifier: LoginIdentifier{
+			Type: "m.id.user",
+			User: user,
+		},
 		Password: pass,
-		Medium:   "email",
-		Type:     "m.login.password",
-		User:     user,
 	}
 
 	var resp LoginResponse
-	err := me.makeMatrixRequest("POST", uri.String(), req, &resp)
-	if err != nil {
+	if err := c.makeMatrixRequest(ctx, http.MethodPost, c.endpoints.login.String(), req, &resp); err != nil {
 		return err
 	}
 
-	me.accessToken = resp.AccessToken
-	me.refreshToken = resp.RefreshToken
-
+	c.mu.Lock()
+	c.accessToken = resp.AccessToken
+	c.mu.Unlock()
 	return nil
 }
